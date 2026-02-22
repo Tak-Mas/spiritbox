@@ -7,7 +7,7 @@
 
 SpiritBoxは、完成したスライド（PPTX）の全貌をGeminiの大容量コンテキストで
 一度に読み取り、全体を通した発表台本を構築する。
-その台本をGemini TTSで音声化し、元のPPTXに埋め込んで
+その台本をgemini-2.5-pro-preview-ttsで音声化し、元のPPTXに埋め込んで
 「ナレーション付き自動再生プレゼンテーション（PPSX）」として出力する。
 
 単なるテキスト読み上げではなく、図表の解釈、スライド間の繋ぎ、
@@ -23,8 +23,8 @@ SpiritBoxはClaude Code上で動作するAgentである。
 
 - `config`: プロジェクト初期化・設定管理（`init_project`, `load_config`, `save_config`）
 - `extract`: PPTXからPDF変換・テキスト・スピーカーノートを一括抽出
-- `script`: 全スライド情報をGemini 3 Proに一括入力し、一貫性のあるマスター台本を生成
-- `voice`: マスター台本をスライドごとに分割し、Gemini TTSで音声ファイルを生成
+- `script`: 全スライド情報をgemini-3-pro-previewに一括入力し、一貫性のあるマスター台本を生成
+- `voice`: マスター台本をスライドごとに分割し、gemini-2.5-pro-preview-ttsで音声ファイルを生成
 - `assemble`: 生成した音声を元のPPTXに埋め込み、スライド自動送りを設定してPPSXとして出力
 
 ---
@@ -45,7 +45,7 @@ SpiritBoxはClaude Code上で動作するAgentである。
 自然な話し言葉に翻訳する。聴衆に語りかける構成にすることが台本生成の最重要任務。
 
 ### P4: Visual Context Grounding — 視覚情報の言語化
-Gemini 3 Proでグラフや図解を読み取り、
+gemini-3-pro-previewでグラフや図解を読み取り、
 「こちらのグラフをご覧ください」のように視覚要素に言及するプレゼン特有の言い回しを台本に組み込む。
 
 ### P5: Slide Marker Protocol — 台本内の分割マーカー
@@ -73,8 +73,8 @@ Gemini 3 Proでグラフや図解を読み取り、
                   │
                   ├── Python scripts を実行
                   │     ├── extract.py    → スライド抽出
-                  │     ├── script.py     → Gemini 3 Pro で台本生成
-                  │     ├── voice.py      → Gemini TTS で音声生成
+                  │     ├── script.py     → gemini-3-pro-preview で台本生成
+                  │     ├── voice.py      → gemini-2.5-pro-preview-tts で音声生成
                   │     └── assemble.py   → PPTX + 音声 → PPSX
                   │
                   └── Google Generative Language API
@@ -96,7 +96,7 @@ Claude CodeがOrchestratorとして全体のワークフローを管理する。
 SDK: `google-genai` を使用。認証は `GOOGLE_API_KEY` で指定。
 `python-dotenv` により、環境変数またはプロジェクトルートの `.env` ファイルから読み込む。
 
-### Gemini TTS 制約
+### gemini-2.5-pro-preview-tts 制約
 
 - テキスト上限: 4,000文字 / リクエスト
 - 音声上限: 約655秒 / リクエスト
@@ -104,7 +104,7 @@ SDK: `google-genai` を使用。認証は `GOOGLE_API_KEY` で指定。
 - スタイル制御: 自然言語プロンプト + マークアップタグ（[whispering], [laughing] 等）
 - 対応言語: 日本語 (ja-JP) ★GA、英語 (en-US) ★GA
 
-### Gemini 3 Pro (Vision + 台本生成) 制約
+### gemini-3-pro-preview (Vision + 台本生成) 制約
 
 - コンテキストウィンドウ: 1M tokens
 - PDFを直接入力（PPTX→PDF変換後、Gemini APIにPDFとして送信）
@@ -131,7 +131,7 @@ python-pptx で音声埋め込み後、ZIP-level post-processing で自動再生
     ├── source/
     │   └── presentation.pptx    # 入力ファイル（コピー、変更されない）
     ├── slides/
-    │   └── presentation.pdf     # PPTX→PDF変換（Gemini 3 Pro入力用）
+    │   └── presentation.pdf     # PPTX→PDF変換（gemini-3-pro-preview入力用）
     ├── script/
     │   └── master_script.md     # マスター台本（会話内でも表示、エディタでも編集可能）
     ├── audio/
@@ -147,7 +147,7 @@ python-pptx で音声埋め込み後、ZIP-level post-processing で自動再生
 
     language: ja              # ja / en
     duration_minutes: 10      # 発表時間（分）。0 = 指定なし
-    voice: Aoede              # Gemini TTS voice name（32種から選択）
+    voice: Aoede              # gemini-2.5-pro-preview-tts voice name（32種から選択）
     voice_style: ""           # 自然言語で声のスタイルを指示（省略可）
     context: |                # Claude Code が AskUserQuestion で収集したリッチなコンテキスト
       新規取引先のCTO向け製品提案。導入を決めてもらうことがゴール。
@@ -311,6 +311,6 @@ bash install.sh             # グローバル /spiritbox コマンド（任意�
 
 1. `config` — プロジェクト初期化・設定管理
 2. `extract` — PPTXからスライド画像・テキスト抽出
-3. `script` — Gemini 3 Proによるマスター台本生成
-4. `voice` — Gemini TTSによる音声生成
+3. `script` — gemini-3-pro-previewによるマスター台本生成
+4. `voice` — gemini-2.5-pro-preview-ttsによる音声生成
 5. `assemble` — PPTX + 音声 → PPSX組み立て

@@ -90,7 +90,7 @@ path = save_master_script(script_text, project_dir)
 print(f"Script saved: {path}")
 ```
 
-- Gemini 3 Pro APIを呼ぶため30秒〜1分かかる場合がある
+- gemini-3-pro-preview APIを呼ぶため30秒〜1分かかる場合がある
 
 ### **台本承認待ち（P2: Script First）**
 
