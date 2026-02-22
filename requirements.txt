@@ -1,0 +1,5 @@
+python-pptx>=1.0.0
+pyyaml>=6.0
+google-genai>=1.0.0
+Pillow>=10.0.0
+lxml>=5.0.0
