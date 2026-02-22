@@ -9,11 +9,15 @@ Gemini 3 Pro のマルチモーダル機能でスライドを読み取り、一�
 
 ### 1. Google Cloud API の有効化
 
+以下の3つのAPIを有効化する：
+
 | API | 用途 | 有効化リンク |
 |-----|------|-------------|
-| **Generative Language API** | Gemini 3 Pro（台本生成）+ Gemini TTS（音声生成） | [有効化](https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview) |
+| **Generative Language API** | Gemini 3 Pro（台本生成） | [有効化](https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview) |
+| **Cloud Text-to-Speech API** | Gemini TTS（音声生成） | [有効化](https://console.developers.google.com/apis/api/texttospeech.googleapis.com/overview) |
+| **Vertex AI API** | （内部依存） | [有効化](https://console.developers.google.com/apis/api/aiplatform.googleapis.com/overview) |
 
-APIキーに制限をかけている場合は、上記APIを許可リストに追加すること。
+APIキーに制限をかけている場合は、上記3つのAPIを許可リストに追加すること。
 
 ### 2. 環境変数
 
