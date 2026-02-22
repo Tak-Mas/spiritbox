@@ -23,7 +23,7 @@ SpiritBoxはClaude Code上で動作するAgentである。
 
 - `config`: プロジェクト初期化・設定管理（`init_project`, `load_config`, `save_config`）
 - `extract`: PPTXからPDF変換・テキスト・スピーカーノートを一括抽出
-- `script`: 全スライド情報をGemini Visionに一括入力し、一貫性のあるマスター台本を生成
+- `script`: 全スライド情報をGemini 3 Proに一括入力し、一貫性のあるマスター台本を生成
 - `voice`: マスター台本をスライドごとに分割し、Gemini TTSで音声ファイルを生成
 - `assemble`: 生成した音声を元のPPTXに埋め込み、スライド自動送りを設定してPPSXとして出力
 
@@ -45,7 +45,7 @@ SpiritBoxはClaude Code上で動作するAgentである。
 自然な話し言葉に翻訳する。聴衆に語りかける構成にすることが台本生成の最重要任務。
 
 ### P4: Visual Context Grounding — 視覚情報の言語化
-Gemini Visionでグラフや図解を読み取り、
+Gemini 3 Proでグラフや図解を読み取り、
 「こちらのグラフをご覧ください」のように視覚要素に言及するプレゼン特有の言い回しを台本に組み込む。
 
 ### P5: Slide Marker Protocol — 台本内の分割マーカー
@@ -73,7 +73,7 @@ Gemini Visionでグラフや図解を読み取り、
                   │
                   ├── Python scripts を実行
                   │     ├── extract.py    → スライド抽出
-                  │     ├── script.py     → Gemini Vision で台本生成
+                  │     ├── script.py     → Gemini 3 Pro で台本生成
                   │     ├── voice.py      → Gemini TTS で音声生成
                   │     └── assemble.py   → PPTX + 音声 → PPSX
                   │
@@ -129,7 +129,7 @@ python-pptx で音声埋め込み後、ZIP-level post-processing で自動再生
     ├── source/
     │   └── presentation.pptx    # 入力ファイル（コピー、変更されない）
     ├── slides/
-    │   └── presentation.pdf     # PPTX→PDF変換（Gemini Vision入力用）
+    │   └── presentation.pdf     # PPTX→PDF変換（Gemini 3 Pro入力用）
     ├── script/
     │   └── master_script.md     # マスター台本（会話内でも表示、エディタでも編集可能）
     ├── audio/
@@ -309,6 +309,6 @@ bash install.sh             # グローバル /spiritbox コマンド（任意�
 
 1. `config` — プロジェクト初期化・設定管理
 2. `extract` — PPTXからスライド画像・テキスト抽出
-3. `script` — Gemini Visionによるマスター台本生成
+3. `script` — Gemini 3 Proによるマスター台本生成
 4. `voice` — Gemini TTSによる音声生成
 5. `assemble` — PPTX + 音声 → PPSX組み立て

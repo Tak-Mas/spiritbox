@@ -1,4 +1,4 @@
-"""Scope: script — Generate master script from all slides via Gemini Vision."""
+"""Scope: script — Generate master script from all slides via Gemini 3 Pro."""
 
 import os
 import re
@@ -116,7 +116,7 @@ def generate_master_script(
     slides_data: list[dict],
     pdf_path: str,
 ) -> str:
-    """Send all slides to Gemini Vision and generate master script.
+    """Send all slides to Gemini 3 Pro and generate master script.
 
     P1: Master Script First — all slides in a single request.
     Uses PDF for visual understanding + extracted text/notes as context.

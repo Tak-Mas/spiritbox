@@ -1,7 +1,7 @@
 # SpiritBox
 
 PPTXにナレーションを付けてPPSXとして出力する自動プレゼンテーションナレーションシステム。
-Gemini Vision でスライドを読み取り、一貫した台本を生成し、Gemini TTS で音声化し、PPSXに埋め込む。
+Gemini 3 Pro のマルチモーダル機能でスライドを読み取り、一貫した台本を生成し、Gemini TTS で音声化し、PPSXに埋め込む。
 
 詳細な設計は [design.md](design.md) を参照。
 
@@ -11,7 +11,7 @@ Gemini Vision でスライドを読み取り、一貫した台本を生成し、
 
 | API | 用途 | 有効化リンク |
 |-----|------|-------------|
-| **Generative Language API** | Gemini Vision（台本生成）+ Gemini TTS（音声生成） | [有効化](https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview) |
+| **Generative Language API** | Gemini 3 Pro（台本生成）+ Gemini TTS（音声生成） | [有効化](https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview) |
 
 APIキーに制限をかけている場合は、上記APIを許可リストに追加すること。
 
@@ -57,7 +57,7 @@ spiritbox/
 ├── __init__.py      # パッケージ定義 (version)
 ├── config.py        # 設定管理 (SpiritBoxConfig, init_project)
 ├── extract.py       # テキスト抽出 & PDF変換
-├── script.py        # Gemini Vision で台本生成
+├── script.py        # Gemini 3 Pro で台本生成
 ├── voice.py         # Gemini TTS で音声生成
 └── assemble.py      # PPSX 組み立て
 ```
@@ -68,7 +68,7 @@ spiritbox/
 {name}_spiritbox/
 ├── config.yaml                    # 言語・時間・声・コンテキスト
 ├── source/presentation.pptx       # 元ファイルのコピー（変更されない）
-├── slides/presentation.pdf        # Gemini Vision 用PDF
+├── slides/presentation.pdf        # Gemini 3 Pro 用PDF
 ├── script/master_script.md        # 生成された台本
 ├── audio/slide_001.wav ...        # スライドごとの音声
 └── output/presentation_narrated.ppsx  # 最終出力
