@@ -5,11 +5,14 @@ import re
 import wave
 from pathlib import Path
 
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
 from .config import SpiritBoxConfig
 from .script import parse_master_script
+
+load_dotenv()
 
 # Gemini TTS text limit: ~5000 chars per request (safe margin).
 _TTS_MAX_CHARS = 4000

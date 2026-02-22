@@ -4,10 +4,13 @@ import os
 import re
 from pathlib import Path
 
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
 from .config import SpiritBoxConfig
+
+load_dotenv()
 
 
 def _build_duration_instruction(slide_count: int, config: SpiritBoxConfig) -> str:

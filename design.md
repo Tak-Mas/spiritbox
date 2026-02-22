@@ -15,11 +15,13 @@ SpiritBoxは、完成したスライド（PPTX）の全貌をGeminiの大容量�
 
 SpiritBoxはClaude Code上で動作するAgentである。
 ユーザーはPPTXを渡して指示するだけで、スクリプトと音声がついたPPSXが返ってくる。
+スタンドアロンCLIは提供せず、Claude Codeの `/spiritbox` コマンドが唯一のインターフェースである。
 
 ---
 
 ## Scopes
 
+- `config`: プロジェクト初期化・設定管理（`init_project`, `load_config`, `save_config`）
 - `extract`: PPTXからPDF変換・テキスト・スピーカーノートを一括抽出
 - `script`: 全スライド情報をGemini Visionに一括入力し、一貫性のあるマスター台本を生成
 - `voice`: マスター台本をスライドごとに分割し、Gemini TTSで音声ファイルを生成
@@ -89,7 +91,8 @@ Claude CodeがOrchestratorとして全体のワークフローを管理する。
 | スライド読み取り + 台本生成 | Generative Language API | generativelanguage.googleapis.com | gemini-3-pro-preview |
 | 音声生成 | Generative Language API | generativelanguage.googleapis.com | gemini-2.5-pro-preview-tts |
 
-SDK: `google-genai` を使用。認証は `GOOGLE_API_KEY` 環境変数で指定。
+SDK: `google-genai` を使用。認証は `GOOGLE_API_KEY` で指定。
+`python-dotenv` により、環境変数またはプロジェクトルートの `.env` ファイルから読み込む。
 
 ### Gemini TTS 制約
 
@@ -130,8 +133,8 @@ python-pptx で音声埋め込み後、ZIP-level post-processing で自動再生
     ├── script/
     │   └── master_script.md     # マスター台本（会話内でも表示、エディタでも編集可能）
     ├── audio/
-    │   ├── slide_01.wav         # 中間生成物（個別音声）
-    │   ├── slide_02.wav
+    │   ├── slide_001.wav        # 中間生成物（個別音声、3桁ゼロパディング）
+    │   ├── slide_002.wav
     │   └── ...
     └── output/
         └── presentation_narrated.ppsx  # 最終成果物
@@ -268,9 +271,44 @@ context: Claude Code がスライド解析後に AskUserQuestion で収集する
 
 ---
 
+## Distribution
+
+単一リポジトリで完結する配布モデル：
+
+```bash
+git clone https://github.com/YOURNAME/SpiritBox.git
+cd SpiritBox
+pip install -e .            # Python パッケージ
+bash install.sh             # グローバル /spiritbox コマンド（任意）
+```
+
+### リポジトリ構成
+
+    SpiritBox/
+    ├── spiritbox/                    # Python パッケージ本体
+    │   ├── __init__.py
+    │   ├── config.py
+    │   ├── extract.py
+    │   ├── script.py
+    │   ├── voice.py
+    │   └── assemble.py
+    ├── .claude/commands/spiritbox.md  # /spiritbox コマンド定義（プロジェクトローカル）
+    ├── install.sh                    # グローバル /spiritbox コマンドのインストーラー
+    ├── uninstall.sh                  # アンインストーラー
+    ├── pyproject.toml
+    ├── CLAUDE.md                     # Claude Code オーケストレーションガイド
+    ├── design.md                     # 本ファイル
+    └── .env                          # GOOGLE_API_KEY（.gitignore対象）
+
+`install.sh` は `.claude/commands/spiritbox.md` を `~/.claude/commands/` にコピーし、
+どのディレクトリからでも `/spiritbox` が使えるようにする。
+
+---
+
 ## Implementation Order
 
-1. `extract` — PPTXからスライド画像・テキスト抽出
-2. `script` — Gemini Visionによるマスター台本生成
-3. `voice` — Gemini TTSによる音声生成
-4. `assemble` — PPTX + 音声 → PPSX組み立て
+1. `config` — プロジェクト初期化・設定管理
+2. `extract` — PPTXからスライド画像・テキスト抽出
+3. `script` — Gemini Visionによるマスター台本生成
+4. `voice` — Gemini TTSによる音声生成
+5. `assemble` — PPTX + 音声 → PPSX組み立て

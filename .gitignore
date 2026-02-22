@@ -7,3 +7,11 @@ __pycache__/
 # Test project artifacts (generated audio, output, slides)
 *_spiritbox/
 *.pptx
+
+# Environment variables
+.env
+
+# Build artifacts
+dist/
+build/
+*.egg
