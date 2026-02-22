@@ -86,13 +86,12 @@ Claude CodeがOrchestratorとして全体のワークフローを管理する。
 
 ### Google Cloud API
 
-以下の3つのAPIの有効化が必要：
+以下の2つのAPIの有効化が必要：
 
 | 用途 | API | エンドポイント | モデル |
 |------|-----|----------------|--------|
 | スライド読み取り + 台本生成 | Generative Language API | generativelanguage.googleapis.com | gemini-3-pro-preview |
 | 音声生成 | Cloud Text-to-Speech API | texttospeech.googleapis.com | gemini-2.5-pro-preview-tts |
-| 内部依存 | Vertex AI API | aiplatform.googleapis.com | — |
 
 SDK: `google-genai` を使用。認証は `GOOGLE_API_KEY` で指定。
 `python-dotenv` により、環境変数またはプロジェクトルートの `.env` ファイルから読み込む。
