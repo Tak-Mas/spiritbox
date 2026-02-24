@@ -1,5 +1,6 @@
 """Scope: assemble — Embed audio into PPTX and output as PPSX."""
 
+import hashlib
 import re
 import zipfile
 from io import BytesIO
@@ -9,10 +10,24 @@ from lxml import etree
 from PIL import Image
 from pptx import Presentation
 from pptx.opc.constants import CONTENT_TYPE as CT
+from pptx.opc.package import Part
 from pptx.util import Cm
 
 from .config import SpiritBoxConfig, get_source_pptx
 from .voice import get_wav_duration_ms
+
+# ---------------------------------------------------------------------------
+# Monkey-patch: python-pptx 1.0.2 _find_by_sha1 crashes when iterating
+# package media parts that lack a `sha1` property (base Part vs MediaPart).
+# Adding a fallback sha1 property to the base Part class fixes it.
+# ---------------------------------------------------------------------------
+if not hasattr(Part, "sha1"):
+
+    @property  # type: ignore[misc]
+    def _part_sha1(self):
+        return hashlib.sha1(self.blob).hexdigest()
+
+    Part.sha1 = _part_sha1
 
 # ---------------------------------------------------------------------------
 # Register WAV audio content type (not included in python-pptx by default).
@@ -64,6 +79,99 @@ def _set_slide_advance_time(slide, duration_ms: int):
 
     # Audio start delay + audio duration + buffer (3000ms)
     transition.set("advTm", str(duration_ms + 3000))
+
+
+def _strip_audio_from_source(pptx_path: str) -> str:
+    """Remove all pre-existing audio from a PPTX at the ZIP level.
+
+    Source PPTXs may contain audio from a previous SpiritBox run.
+    This strips WAV media files, their relationship entries, audio shapes
+    in slide XMLs, and timing nodes — preventing double-playback.
+
+    Returns path to a cleaned temp copy (caller must delete).
+    """
+    clean_path = pptx_path + ".clean"
+
+    with zipfile.ZipFile(pptx_path, "r") as zin:
+        # Identify WAV media files
+        wav_files = {
+            f for f in zin.namelist()
+            if re.match(r"ppt/media/.*\.wav$", f, re.IGNORECASE)
+        }
+        if not wav_files:
+            return pptx_path  # Nothing to strip
+
+        # Map WAV filenames to relationship targets for matching in .rels
+        wav_targets = {f.split("/")[-1] for f in wav_files}
+
+        with zipfile.ZipFile(clean_path, "w", zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                # Skip WAV media files entirely
+                if item.filename in wav_files:
+                    continue
+
+                data = zin.read(item.filename)
+
+                # Clean slide .rels: remove relationships pointing to WAVs
+                if re.match(
+                    r"ppt/slides/_rels/slide\d+\.xml\.rels$", item.filename
+                ):
+                    data = _clean_rels(data, wav_targets)
+
+                # Clean slide XML: remove audio shapes and their timing
+                if re.match(r"ppt/slides/slide\d+\.xml$", item.filename):
+                    data = _clean_slide_xml(data)
+
+                zout.writestr(item, data)
+
+    return clean_path
+
+
+def _clean_rels(data: bytes, wav_targets: set[str]) -> bytes:
+    """Remove relationship entries that reference WAV files."""
+    root = etree.fromstring(data)
+    for rel in list(root):
+        target = rel.get("Target", "")
+        # Targets look like "../media/media1.wav"
+        basename = target.split("/")[-1]
+        if basename in wav_targets:
+            root.remove(rel)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _clean_slide_xml(data: bytes) -> bytes:
+    """Remove audio-related shapes and timing from a slide XML."""
+    root = etree.fromstring(data)
+    nsmap = {
+        "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+        "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    }
+
+    # Find shape tree
+    sp_tree = root.find(".//p:cSld/p:spTree", nsmap)
+    if sp_tree is not None:
+        # Remove pic elements whose name ends with .wav
+        for pic in list(sp_tree.findall(".//p:pic", nsmap)):
+            nv_pr = pic.find(".//p:nvPicPr/p:cNvPr", nsmap)
+            if nv_pr is None:
+                nv_pr = pic.find(".//{%s}cNvPr" % nsmap["a"])
+            if nv_pr is not None:
+                name = nv_pr.get("name", "")
+                if name.endswith(".wav"):
+                    pic.getparent().remove(pic)
+                    continue
+            # Also check for audioFile elements inside the pic
+            audio_file = pic.find(".//{%s}audioFile" % nsmap["a"])
+            if audio_file is not None:
+                pic.getparent().remove(pic)
+
+    # Remove timing tree entirely — SpiritBox will recreate it
+    timing = root.find("p:timing", nsmap)
+    if timing is not None:
+        root.remove(timing)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
 def _embed_audio_in_slide(slide, audio_path: str, slide_width, slide_height) -> str | None:
@@ -150,47 +258,56 @@ def assemble_ppsx(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     pptx_path = get_source_pptx(project_dir, config)
-    prs = Presentation(str(pptx_path))
-    slide_width = prs.slide_width
-    slide_height = prs.slide_height
 
-    audio_slide_nums = set()
-
-    for i, slide in enumerate(prs.slides, 1):
-        wav_path = audio_dir / f"slide_{i:03d}.wav"
-        if not wav_path.exists():
-            _set_slide_advance_time(slide, 3000)
-            continue
-
-        duration_ms = durations.get(i, get_wav_duration_ms(str(wav_path)))
-
-        shape_id = _embed_audio_in_slide(
-            slide, str(wav_path), slide_width, slide_height
-        )
-        if shape_id:
-            audio_slide_nums.add(i)
-
-        _set_slide_advance_time(slide, duration_ms)
-
-    # Save as PPTX (python-pptx creates click-triggered timing)
-    tmp_pptx = output_dir / f"{pptx_path.stem}_narrated.pptx"
-    prs.save(str(tmp_pptx))
-
-    # Minimal post-process: change delay="indefinite" to delay="0"
-    _fix_autoplay_in_zip(str(tmp_pptx), audio_slide_nums)
-
-    # Convert to PPSX (avoid overwriting existing files)
-    base_name = f"{pptx_path.stem}_narrated"
-    ppsx_path = output_dir / f"{base_name}.ppsx"
-    n = 2
-    while ppsx_path.exists():
-        ppsx_path = output_dir / f"{base_name}_{n}.ppsx"
-        n += 1
-
+    # Strip any pre-existing audio from source to prevent double-playback
+    clean_path = _strip_audio_from_source(str(pptx_path))
     try:
-        _convert_to_ppsx(str(tmp_pptx), str(ppsx_path))
+        prs = Presentation(clean_path)
+        slide_width = prs.slide_width
+        slide_height = prs.slide_height
+
+        audio_slide_nums = set()
+
+        for i, slide in enumerate(prs.slides, 1):
+            wav_path = audio_dir / f"slide_{i:03d}.wav"
+            if not wav_path.exists():
+                _set_slide_advance_time(slide, 3000)
+                continue
+
+            duration_ms = durations.get(i, get_wav_duration_ms(str(wav_path)))
+
+            shape_id = _embed_audio_in_slide(
+                slide, str(wav_path), slide_width, slide_height
+            )
+            if shape_id:
+                audio_slide_nums.add(i)
+
+            _set_slide_advance_time(slide, duration_ms)
+
+        # Save as PPTX (python-pptx creates click-triggered timing)
+        tmp_pptx = output_dir / f"{pptx_path.stem}_narrated.pptx"
+        prs.save(str(tmp_pptx))
+
+        # Minimal post-process: change delay="indefinite" to delay="0"
+        _fix_autoplay_in_zip(str(tmp_pptx), audio_slide_nums)
+
+        # Convert to PPSX (avoid overwriting existing files)
+        base_name = f"{pptx_path.stem}_narrated"
+        ppsx_path = output_dir / f"{base_name}.ppsx"
+        n = 2
+        while ppsx_path.exists():
+            ppsx_path = output_dir / f"{base_name}_{n}.ppsx"
+            n += 1
+
+        try:
+            _convert_to_ppsx(str(tmp_pptx), str(ppsx_path))
+        finally:
+            if tmp_pptx.exists():
+                tmp_pptx.unlink()
+
     finally:
-        if tmp_pptx.exists():
-            tmp_pptx.unlink()
+        # Clean up temp file if we created one
+        if clean_path != str(pptx_path) and Path(clean_path).exists():
+            Path(clean_path).unlink()
 
     return str(ppsx_path)
