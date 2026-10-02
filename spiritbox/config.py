@@ -7,6 +7,18 @@ from pathlib import Path
 
 SUPPORTED_LANGUAGES = {"ja": "ja-JP", "en": "en-US"}
 
+# Where the narration script comes from (P9: Explicit Script Source).
+#   generate     — the script model writes it from the slides (notes = background only)
+#   notes        — the speaker notes ARE the script, used verbatim (no LLM call)
+#   notes_refine — the speaker notes are a draft; the script model polishes them
+SCRIPT_SOURCES = ("generate", "notes", "notes_refine")
+
+# What the pipeline produces in the end.
+OUTPUT_FORMATS = ("ppsx", "video", "both")
+
+DEFAULT_SCRIPT_MODEL = "claude-opus-5-5"
+DEFAULT_TTS_MODEL = "gemini-3.8-flash-tts"
+
 
 @dataclass
 class SpiritBoxConfig:
@@ -16,6 +28,10 @@ class SpiritBoxConfig:
     voice_style: str = ""
     source_filename: str = ""  # original PPTX filename (set by init_project)
     context: str = ""  # rich context collected by Claude Code via AskUserQuestion
+    script_source: str = "generate"  # one of SCRIPT_SOURCES
+    output_format: str = "ppsx"  # one of OUTPUT_FORMATS
+    script_model: str = DEFAULT_SCRIPT_MODEL  # "claude-*" or "gemini-*"
+    tts_model: str = DEFAULT_TTS_MODEL
 
     @property
     def language_code(self) -> str:
@@ -31,6 +47,24 @@ class SpiritBoxConfig:
         if self.voice:
             return self.voice
         return {"ja": "Aoede", "en": "Kore"}.get(self.language, "Kore")
+
+    @property
+    def is_video(self) -> bool:
+        """True when the narration is the voice-over of a recorded video."""
+        return self.output_format in ("video", "both")
+
+    def validate(self):
+        """Raise ValueError for values the pipeline cannot handle."""
+        if self.script_source not in SCRIPT_SOURCES:
+            raise ValueError(
+                f"Unsupported script_source: '{self.script_source}'. "
+                f"Supported: {list(SCRIPT_SOURCES)}"
+            )
+        if self.output_format not in OUTPUT_FORMATS:
+            raise ValueError(
+                f"Unsupported output_format: '{self.output_format}'. "
+                f"Supported: {list(OUTPUT_FORMATS)}"
+            )
 
 
 def load_config(project_dir: str) -> SpiritBoxConfig:
@@ -57,6 +91,10 @@ def save_config(config: SpiritBoxConfig, project_dir: str):
         "voice_style": config.voice_style,
         "source_filename": config.source_filename,
         "context": config.context,
+        "script_source": config.script_source,
+        "output_format": config.output_format,
+        "script_model": config.script_model,
+        "tts_model": config.tts_model,
     }
     with open(config_path, "w") as f:
         yaml.dump(data, f, allow_unicode=True, default_flow_style=False)

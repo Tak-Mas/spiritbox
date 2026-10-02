@@ -35,6 +35,7 @@ from spiritbox.script import (
     parse_master_script,
 )
 from spiritbox.voice import (
+    _TTS_MAX_CHARS,
     _save_pcm_as_wav,
     _split_text_for_tts,
     generate_all_audio,
@@ -685,8 +686,7 @@ class TestSplitTextForTts:
 
     def test_text_exactly_at_limit(self):
         # Text exactly at the character limit should NOT be split
-        text = "a" * 4000
-        assert len(text) == 4000
+        text = "a" * _TTS_MAX_CHARS
         result = _split_text_for_tts(text)
         assert result == [text]
 

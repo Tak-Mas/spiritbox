@@ -24,6 +24,20 @@ def _extract_shape_text(shape) -> list[str]:
     return parts
 
 
+def _slide_title(slide, text_parts: list[str]) -> str:
+    """Slide title: the title placeholder, else the first non-empty text line."""
+    title_shape = slide.shapes.title
+    if title_shape is not None and title_shape.has_text_frame:
+        title = " ".join(title_shape.text_frame.text.split())
+        if title:
+            return title
+    for part in text_parts:
+        for line in part.splitlines():
+            if line.strip():
+                return " ".join(line.split())
+    return ""
+
+
 def extract_text_and_notes(pptx_path: str) -> list[dict]:
     """Extract text content and speaker notes from all slides."""
     prs = Presentation(pptx_path)
@@ -40,6 +54,9 @@ def extract_text_and_notes(pptx_path: str) -> list[dict]:
 
         slides_data.append({
             "slide_number": i,
+            "title": _slide_title(slide, text_parts),
+            # Hidden slides are not exported to the PDF by LibreOffice.
+            "hidden": slide._element.get("show") in ("0", "false"),
             "text": "\n".join(text_parts),
             "notes": notes_text,
         })

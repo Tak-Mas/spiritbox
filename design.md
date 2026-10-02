@@ -5,16 +5,18 @@
 プレゼンテーションは「視覚的なスライド」と「聴覚的な語り」が組み合わさって
 初めて完成する、一連のストーリーテリングである。
 
-SpiritBoxは、完成したスライド（PPTX）の全貌をGeminiの大容量コンテキストで
+SpiritBoxは、完成したスライド（PPTX）の全貌をClaude（claude-opus-5-5）の大容量コンテキストで
 一度に読み取り、全体を通した発表台本を構築する。
-その台本をgemini-2.5-pro-preview-ttsで音声化し、元のPPTXに埋め込んで
-「ナレーション付き自動再生プレゼンテーション（PPSX）」として出力する。
+その台本をgemini-3.8-flash-ttsで音声化し、次の形で出力する。
+
+- 元のPPTXに埋め込んだ「ナレーション付き自動再生プレゼンテーション（PPSX）」
+- YouTubeにそのまま投稿できる「ナレーション付きスライド動画（MP4）」と、字幕・チャプター・サムネイル
 
 単なるテキスト読み上げではなく、図表の解釈、スライド間の繋ぎ、
 発表者としての自然な語りを自動構築することを目的とする。
 
 SpiritBoxはClaude Code上で動作するAgentである。
-ユーザーはPPTXを渡して指示するだけで、スクリプトと音声がついたPPSXが返ってくる。
+ユーザーはPPTXを渡して指示するだけで、スクリプトと音声がついたPPSXまたは動画が返ってくる。
 スタンドアロンCLIは提供せず、Claude Codeの `/spiritbox` コマンドが唯一のインターフェースである。
 
 ---
@@ -22,10 +24,11 @@ SpiritBoxはClaude Code上で動作するAgentである。
 ## Scopes
 
 - `config`: プロジェクト初期化・設定管理（`init_project`, `load_config`, `save_config`）
-- `extract`: PPTXからPDF変換・テキスト・スピーカーノートを一括抽出
-- `script`: 全スライド情報をgemini-3-pro-previewに一括入力し、一貫性のあるマスター台本を生成
-- `voice`: マスター台本をスライドごとに分割し、gemini-2.5-pro-preview-ttsで音声ファイルを生成
+- `extract`: PPTXからPDF変換・タイトル・テキスト・スピーカーノートを一括抽出
+- `script`: 全スライド情報をclaude-opus-5-5に一括入力し、一貫性のあるマスター台本を生成（またはスピーカーノートから台本を作る）
+- `voice`: マスター台本をスライドごとに分割し、gemini-3.8-flash-ttsで音声ファイルを生成
 - `assemble`: 生成した音声を元のPPTXに埋め込み、スライド自動送りを設定してPPSXとして出力
+- `video`: スライド画像と音声からYouTube向けMP4を作り、字幕（SRT）・チャプター・サムネイルを添える
 
 ---
 
@@ -45,7 +48,7 @@ SpiritBoxはClaude Code上で動作するAgentである。
 自然な話し言葉に翻訳する。聴衆に語りかける構成にすることが台本生成の最重要任務。
 
 ### P4: Visual Context Grounding — 視覚情報の言語化
-gemini-3-pro-previewでグラフや図解を読み取り、
+claude-opus-5-5でスライドPDFのグラフや図解を読み取り、
 「こちらのグラフをご覧ください」のように視覚要素に言及するプレゼン特有の言い回しを台本に組み込む。
 
 ### P5: Slide Marker Protocol — 台本内の分割マーカー
@@ -61,7 +64,23 @@ gemini-3-pro-previewでグラフや図解を読み取り、
 ユーザーが設定するのは「トーン」「対象聴衆」「声の種類」「言語」のみ。
 
 ### P8: Non-Destructive Output — 元ファイルを壊さない
-入力されたPPTXは一切変更しない。ナレーション付きPPSXは別ファイルとして新規作成する。
+入力されたPPTXは一切変更しない。ナレーション付きPPSXと動画は別ファイルとして新規作成する。
+
+### P9: Explicit Script Source — 台本の出どころはユーザーが明示的に選ぶ
+スピーカーノートには、完成した台本が書かれていることもあれば、単なるメモが書かれていることもある。
+ノートの有無から自動で判断すると、メモを読み上げる事故が起きる。
+そのため、台本の出どころ（`script_source`）は必ずユーザーに選んでもらう。
+
+- `generate`（既定）: Claudeがスライドから台本を書く。ノートは背景情報としてだけ使い、読み上げない
+- `notes`: ノートをそのまま台本にする（LLMを呼ばない）
+- `notes_refine`: ノートを下書きとして、Claudeが内容・数字・順序を保ったまま話し言葉に整える
+
+どのモードでも台本は master_script.md に書き出され、P2の承認を経てから音声化する。
+
+### P10: One Script, Many Outputs — 1つの台本と音声から複数の形式を出力する
+承認済みの台本と音声（audio/slide_XXX.wav）は出力形式に依存しない。
+同じ音声から、PPSX（`assemble`）とMP4（`video`）の両方を作れる。
+出力形式によって変わるのは台本の語り口だけである（動画では視聴者に語りかけ、フィラーを入れない）。
 
 ---
 
@@ -72,43 +91,49 @@ gemini-3-pro-previewでグラフや図解を読み取り、
     User ←→ Claude Code (Orchestrator)
                   │
                   ├── Python scripts を実行
-                  │     ├── extract.py    → スライド抽出
-                  │     ├── script.py     → gemini-3-pro-preview で台本生成
-                  │     ├── voice.py      → gemini-2.5-pro-preview-tts で音声生成
-                  │     └── assemble.py   → PPTX + 音声 → PPSX
+                  │     ├── extract.py    → スライド抽出（PDF・タイトル・テキスト・ノート）
+                  │     ├── script.py     → claude-opus-5-5 で台本生成（またはノートから台本化）
+                  │     ├── voice.py      → gemini-3.8-flash-tts で音声生成
+                  │     ├── assemble.py   → PPTX + 音声 → PPSX
+                  │     └── video.py      → スライド画像 + 音声 → MP4 / SRT / チャプター / サムネイル
+                  │
+                  ├── Anthropic Claude API
+                  │     └── claude-opus-5-5 (PDF読み取り + 台本生成)
                   │
                   └── Google Generative Language API
-                        ├── gemini-3-pro-preview (Vision + 台本生成)
-                        └── gemini-2.5-pro-preview-tts (音声生成)
+                        └── gemini-3.8-flash-tts (音声生成)
 
 Claude CodeがOrchestratorとして全体のワークフローを管理する。
 ユーザーはClaude Codeとの会話の中でPPTXを渡し、指示を出す。
 
-### Google Cloud API
+### APIキー
 
-以下の2つのAPIの有効化が必要：
+| 用途 | API | 認証 | 既定モデル |
+|------|-----|------|-----------|
+| スライド読み取り + 台本生成 | Anthropic Claude API | `ANTHROPIC_API_KEY` | claude-opus-5-5 |
+| 音声生成 | Gemini API（google-genai） | `GOOGLE_API_KEY` | gemini-3.8-flash-tts |
 
-| 用途 | API | エンドポイント | モデル |
-|------|-----|----------------|--------|
-| スライド読み取り + 台本生成 | Generative Language API | generativelanguage.googleapis.com | gemini-3-pro-preview |
-| 音声生成 | Cloud Text-to-Speech API | texttospeech.googleapis.com | gemini-2.5-pro-preview-tts |
-
-SDK: `google-genai` を使用。認証は `GOOGLE_API_KEY` で指定。
+`script_model` を `gemini-3-pro-preview` にすると、従来どおりGeminiで台本を生成できる（`GOOGLE_API_KEY` を使用）。
+`script_source: notes` のときは台本生成でAPIを呼ばないので、`ANTHROPIC_API_KEY` は不要。
 `python-dotenv` により、環境変数またはプロジェクトルートの `.env` ファイルから読み込む。
 
-### gemini-2.5-pro-preview-tts 制約
+### claude-opus-5-5 (PDF読み取り + 台本生成) 制約
 
-- テキスト上限: 4,000文字 / リクエスト
-- 音声上限: 約655秒 / リクエスト
-- 出力: 24kHz PCM（WAVに変換して使用）
-- スタイル制御: 自然言語プロンプト + マークアップタグ（[whispering], [laughing] 等）
-- 対応言語: 日本語 (ja-JP) ★GA、英語 (en-US) ★GA
+- コンテキストウィンドウ: 1M tokens、出力上限: 128K tokens（SpiritBoxは64Kで要求）
+- PDFは base64 の document ブロックとして送信する（1リクエスト32MBまで、600ページまで）。PDFが約22MBを超える場合はエラーにして画像の圧縮を促す
+- 長い出力でHTTPタイムアウトにならないよう、ストリーミング（`messages.stream`）で受け取る
+- adaptive thinking（既定）+ `effort: high`。安全性の判定で断られた場合に備えて、サーバー側フォールバック（`fallbacks: "default"`）を有効にしている
+- 断られた場合（`stop_reason: refusal`）と出力上限で切れた場合（`max_tokens`）は、台本を保存せずにエラーにする
 
-### gemini-3-pro-preview (Vision + 台本生成) 制約
+### gemini-3.8-flash-tts 制約
 
-- コンテキストウィンドウ: 1M tokens
-- PDFを直接入力（PPTX→PDF変換後、Gemini APIにPDFとして送信）
-- 台本品質を最優先するため、最上位モデル（gemini-3-pro-preview）を使用
+- 入力上限: 8,192 tokens / リクエスト、出力上限: 16,384 audio tokens / リクエスト（数分）
+- SpiritBoxは1リクエスト1,500文字以内に分割する（日本語で約4分）
+- 出力: WAV（16-bit PCM、mono、24kHz）。Gemini 2.x の生PCMにも対応する
+- 声: `speech_config.voice_config.voice` に声の名前を指定（既定: ja → Aoede、en → Kore）
+- スタイル: `voice_style` を各パートの `speech_metadata.style` として渡す
+- 一時的なエラー（429・5xx）と空の応答は最大3回まで再試行する
+- `tts_model` を `gemini-2.5-pro-preview-tts` にすると従来のリクエスト形式（prebuilt_voice_config）で動く
 
 ### PPSX 組み立て技術
 
@@ -122,16 +147,26 @@ python-pptx で音声埋め込み後、ZIP-level post-processing で自動再生
 
 参考実装: [AnnotatePptx](https://github.com/yoonghm/AnnotatePptx)
 
+### 動画（MP4）組み立て技術
+
+1. pypdfium2 でスライドPDFの各ページを 1920x1080 に収まるPNGに描画する（`slides/images/`、PDFより新しければ再利用）
+2. 各スライドの長さ = 0.5秒（前の無音）+ 音声 + 1.0秒（後の無音）。音声のないスライドは3秒
+3. 全スライドの音声と無音を、サンプル単位で正確に連結した1本のWAVを作る（スライド切り替えと音声がずれない）
+4. ffmpeg の concat demuxer で各画像を上記の長さだけ表示し、1920x1080・30fps・H.264（`-tune stillimage`）と AAC 48kHz に変換する
+5. 付属ファイル: 台本からSRT字幕（スライド境界は正確、スライド内の文ごとの時刻は文字数比で推定）、YouTubeチャプター（0:00開始、各10秒以上、同じタイトルの連続は統合）、1枚目から 1280x720 サムネイル
+6. LibreOfficeは非表示スライドをPDFに出力しないため、PDFのページ数が表示スライド数と一致する場合は非表示スライドを動画から除く
+
 ---
 
 ## Project Directory Structure
 
     {project_name}_spiritbox/
-    ├── config.yaml              # トーン、聴衆、Voice、言語
+    ├── config.yaml              # トーン、聴衆、Voice、言語、台本の出どころ、出力形式
     ├── source/
     │   └── presentation.pptx    # 入力ファイル（コピー、変更されない）
     ├── slides/
-    │   └── presentation.pdf     # PPTX→PDF変換（gemini-3-pro-preview入力用）
+    │   ├── presentation.pdf     # PPTX→PDF変換（台本モデルへの入力用）
+    │   └── images/page_001.png  # 動画用のスライド画像（video のときだけ）
     ├── script/
     │   └── master_script.md     # マスター台本（会話内でも表示、エディタでも編集可能）
     ├── audio/
@@ -139,7 +174,11 @@ python-pptx で音声埋め込み後、ZIP-level post-processing で自動再生
     │   ├── slide_002.wav
     │   └── ...
     └── output/
-        └── presentation_narrated.ppsx  # 最終成果物
+        ├── presentation_narrated.ppsx            # 最終成果物（ppsx / both）
+        ├── presentation_narrated.mp4             # 最終成果物（video / both）
+        ├── presentation_narrated.srt             # 字幕
+        ├── presentation_narrated_chapters.txt    # YouTubeチャプター
+        └── presentation_narrated_thumbnail.jpg   # サムネイル
 
 ---
 
@@ -147,8 +186,12 @@ python-pptx で音声埋め込み後、ZIP-level post-processing で自動再生
 
     language: ja              # ja / en
     duration_minutes: 10      # 発表時間（分）。0 = 指定なし
-    voice: Aoede              # gemini-2.5-pro-preview-tts voice name（32種から選択）
+    voice: Aoede              # TTS の声の名前（空なら言語ごとの既定）
     voice_style: ""           # 自然言語で声のスタイルを指示（省略可）
+    script_source: generate   # generate / notes / notes_refine（P9）
+    output_format: video      # ppsx / video / both
+    script_model: claude-opus-5-5       # claude-* または gemini-*
+    tts_model: gemini-3.8-flash-tts
     context: |                # Claude Code が AskUserQuestion で収集したリッチなコンテキスト
       新規取引先のCTO向け製品提案。導入を決めてもらうことがゴール。
       フォーマルだが堅すぎず、技術的な信頼感を重視。
@@ -228,6 +271,31 @@ context: Claude Code がスライド解析後に AskUserQuestion で収集する
                  ✓ 完了: output/presentation_narrated.ppsx
                  ダブルクリックでナレーション付きプレゼンが自動再生されます。
 
+### YouTube動画 + ノートの台本を使う場合
+
+    User: このPPTXをYouTube用の動画にして [lecture.pptx]
+
+    Claude Code: スライドを解析中... 12枚検出しました。
+                 12枚中10枚にスピーカーノートがあります。例（Slide 2）:
+                 「本日は、まず市場の現状からお話しします。…」
+
+                 [AskUserQuestion]
+                 台本はどう作りますか？
+                    a) スライドから新しく書く（ノートは参考情報として使い、読み上げない）
+                    b) ノートをそのまま台本にする（ノートのない Slide 1, 12 は無音）
+                    c) ノートを下書きとして、内容を保ったまま話し言葉に整える
+
+    User: c
+
+    Claude Code: (台本生成 → 承認 → 音声生成)
+                 動画を作成中...
+                 ✓ output/lecture_narrated.mp4（14分32秒）
+                 ✓ output/lecture_narrated.srt — YouTube Studio の「字幕」からアップロード
+                 ✓ output/lecture_narrated_chapters.txt — 説明欄に貼るチャプター（9個）
+                 ✓ output/lecture_narrated_thumbnail.jpg — サムネイル
+
+ノートがあっても、自動でノートを台本に切り替えることはしない（P9）。
+
 ### 英語プレゼンの場合
 
     User: This PPTX needs narration in English. Formal tone, for investors.
@@ -293,14 +361,15 @@ bash install.sh             # グローバル /spiritbox コマンド（任意�
     │   ├── extract.py
     │   ├── script.py
     │   ├── voice.py
-    │   └── assemble.py
+    │   ├── assemble.py
+    │   └── video.py
     ├── .claude/commands/spiritbox.md  # /spiritbox コマンド定義（プロジェクトローカル）
     ├── install.sh                    # グローバル /spiritbox コマンドのインストーラー
     ├── uninstall.sh                  # アンインストーラー
     ├── pyproject.toml
     ├── CLAUDE.md                     # Claude Code オーケストレーションガイド
     ├── design.md                     # 本ファイル
-    └── .env                          # GOOGLE_API_KEY（.gitignore対象）
+    └── .env                          # ANTHROPIC_API_KEY / GOOGLE_API_KEY（.gitignore対象）
 
 `install.sh` は `.claude/commands/spiritbox.md` を `~/.claude/commands/` にコピーし、
 どのディレクトリからでも `/spiritbox` が使えるようにする。
@@ -311,6 +380,7 @@ bash install.sh             # グローバル /spiritbox コマンド（任意�
 
 1. `config` — プロジェクト初期化・設定管理
 2. `extract` — PPTXからスライド画像・テキスト抽出
-3. `script` — gemini-3-pro-previewによるマスター台本生成
-4. `voice` — gemini-2.5-pro-preview-ttsによる音声生成
+3. `script` — claude-opus-5-5によるマスター台本生成（ノートからの台本化を含む）
+4. `voice` — gemini-3.8-flash-ttsによる音声生成
 5. `assemble` — PPTX + 音声 → PPSX組み立て
+6. `video` — スライド画像 + 音声 → YouTube向けMP4・字幕・チャプター・サムネイル
